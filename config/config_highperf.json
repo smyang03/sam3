@@ -1,0 +1,32 @@
+{
+  "_comment": "SAM3 YOLO Dataset Creator - High Performance Configuration",
+  "_description": "고성능 GPU (RTX 4090, 3090 등 24GB VRAM) 최적화 설정",
+  
+  "model_dir": "./models",
+  "image_dir": "./data/images",
+  "label_dir": "./data/labels",
+  "viz_dir": "./data/results",
+  
+  "classes": {
+    "person": 0,
+    "car": 1,
+    "bicycle": 2,
+    "motorcycle": 3,
+    "bus": 4,
+    "truck": 5,
+    "traffic light": 6,
+    "stop sign": 7,
+    "cat": 8,
+    "dog": 9
+  },
+  
+  "threshold": 0.3,
+  "chunk_size": 8,
+  "show": false,
+  "save_viz": true,
+  
+  "_performance_notes": {
+    "chunk_size": "RTX 4090/3090 24GB: 6-8개 권장",
+    "expected_speed": "약 2-3초/이미지 (10개 프롬프트 기준)"
+  }
+}

@@ -1,0 +1,77 @@
+# ============================================
+# SAM3 YOLO Dataset Creator - Requirements
+# 오프라인 리눅스 서버용 (CUDA 12.6)
+# ============================================
+
+# ----- Core Deep Learning -----
+# PyTorch (CUDA 12.6 지원)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# ----- SAM3 Model -----
+# SAM3는 GitHub에서 직접 설치 필요
+# git clone https://github.com/facebookresearch/sam3.git
+# cd sam3 && pip install -e .
+# 또는 오프라인: pip install sam3-0.1.0-py3-none-any.whl
+
+# ----- Vision & Image Processing -----
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0  # 추가 기능 (선택)
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# ----- Transformers & Vision Models -----
+transformers>=4.30.0
+timm>=0.9.0  # PyTorch Image Models (ViT 등)
+safetensors>=0.3.0  # 모델 로딩용
+
+# ----- Utilities -----
+tqdm>=4.65.0  # Progress bar
+certifi>=2023.0.0  # SSL 인증서
+
+# ----- HuggingFace (오프라인 모드에서도 필요) -----
+huggingface-hub>=0.16.0
+
+# ----- Optional but Recommended -----
+einops>=0.6.0  # 텐서 연산 유틸
+scipy>=1.10.0  # 과학 계산
+matplotlib>=3.7.0  # 시각화 (디버깅용)
+
+# ----- Development & Debugging -----
+# ipython>=8.12.0  # 인터랙티브 디버깅
+# jupyter>=1.0.0  # 노트북 환경 (선택)
+
+# ============================================
+# 설치 방법 (온라인 환경):
+# ============================================
+# 1. PyTorch CUDA 12.6 설치:
+#    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+#
+# 2. 나머지 패키지:
+#    pip install -r requirements.txt
+#
+# 3. SAM3 설치:
+#    git clone https://github.com/facebookresearch/sam3.git
+#    cd sam3 && pip install -e .
+#
+# ============================================
+# 오프라인 환경 준비:
+# ============================================
+# 1. 온라인 PC에서 패키지 다운로드:
+#    pip download -r requirements.txt -d packages/
+#
+# 2. SAM3 wheel 빌드:
+#    cd sam3 && python setup.py bdist_wheel
+#    cp dist/*.whl ../packages/
+#
+# 3. 서버로 packages/ 폴더 복사 후:
+#    pip install --no-index --find-links=packages/ -r requirements.txt
+#    pip install --no-index --find-links=packages/ sam3-*.whl
+#
+# ============================================
+# GPU 확인:
+# ============================================
+# python -c "import torch; print(torch.cuda.is_available())"
+# python -c "import torch; print(torch.cuda.get_device_name(0))"
+# ============================================

@@ -1,0 +1,18 @@
+{
+  "_comment": "SAM3 YOLO Dataset Creator - Configuration File",
+  "_description": "이미지 기반 라벨 생성 기본 설정",
+  
+  "model_dir": "D:/code/sam3/models",
+  "image_dir": "D:/code/sam3/testset/JPEGImages",
+  "label_dir": "D:/code/sam3/testset/labels",
+  "viz_dir": "D:/code/sam3/testset/result",
+  
+  "classes": {
+    "person": 0
+  },
+  
+  "threshold": 0.3,
+  "chunk_size": 4,
+  "show": true,
+  "save_viz": true
+}

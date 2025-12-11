@@ -1,0 +1,22 @@
+{
+  "_comment": "SAM3 YOLO Dataset Creator - Video Processing Configuration",
+  "_description": "동영상 프레임 추출 + 라벨 생성",
+  
+  "model_dir": "./models",
+  "video_source": "./data/videos",
+  "fps": 1,
+  "jpeg_dir": "./data/JPEGImages",
+  "label_dir": "./data/labels",
+  "viz_dir": "./data/results",
+  
+  "classes": {
+    "person": 0,
+    "car": 1,
+    "bicycle": 2
+  },
+  
+  "threshold": 0.5,
+  "chunk_size": 4,
+  "show": false,
+  "save_viz": true
+}

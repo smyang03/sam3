@@ -1,0 +1,11 @@
+{
+  "model_type": "sam3",
+  "architecture": "SAM3 Image Model",
+  "checkpoint_file": "sam3_checkpoint.pth",
+  "bpe_vocab_file": "bpe_simple_vocab_16e6.txt.gz",
+  "download_date": "2025-12-08 18:32:57",
+  "pytorch_version": "2.7.0+cu126",
+  "cuda_available": true,
+  "cuda_version": "12.6",
+  "gpu_name": "NVIDIA GeForce RTX 4090"
+}
