@@ -22,11 +22,16 @@
   
   "threshold": 0.3,
   "chunk_size": 8,
+
+  "enable_nms": true,
+  "nms_iou_threshold": 0.5,
+
   "show": false,
   "save_viz": true,
-  
+
   "_performance_notes": {
     "chunk_size": "RTX 4090/3090 24GB: 6-8개 권장",
-    "expected_speed": "약 2-3초/이미지 (10개 프롬프트 기준)"
+    "expected_speed": "약 2-3초/이미지 (10개 프롬프트 기준)",
+    "nms": "고성능 설정에서는 중복 박스 제거 권장 (enable_nms: true)"
   }
 }

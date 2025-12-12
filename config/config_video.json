@@ -17,6 +17,10 @@
   
   "threshold": 0.5,
   "chunk_size": 4,
+
+  "enable_nms": false,
+  "nms_iou_threshold": 0.5,
+
   "show": false,
   "save_viz": true
 }

@@ -464,47 +464,162 @@ def parse_class_mapping(class_str):
 def bbox_to_yolo_format(box, img_width, img_height):
     """박스를 YOLO 형식으로 변환"""
     x1, y1, x2, y2 = box
-    
+
     x_center = (x1 + x2) / 2.0 / img_width
     y_center = (y1 + y2) / 2.0 / img_height
     width = (x2 - x1) / img_width
     height = (y2 - y1) / img_height
-    
+
     return x_center, y_center, width, height
 
 
-def save_yolo_annotation(image_path, results_by_prompt, class_mapping, output_dir, img_width, img_height):
-    """YOLO 형식 어노테이션 저장"""
+def compute_iou(box1, box2):
+    """
+    두 박스 간의 IoU(Intersection over Union) 계산
+
+    Args:
+        box1, box2: [x1, y1, x2, y2] 형식의 박스
+
+    Returns:
+        float: IoU 값 (0.0 ~ 1.0)
+    """
+    x1_min, y1_min, x1_max, y1_max = box1
+    x2_min, y2_min, x2_max, y2_max = box2
+
+    # 교집합 영역 계산
+    inter_xmin = max(x1_min, x2_min)
+    inter_ymin = max(y1_min, y2_min)
+    inter_xmax = min(x1_max, x2_max)
+    inter_ymax = min(y1_max, y2_max)
+
+    inter_w = max(0.0, inter_xmax - inter_xmin)
+    inter_h = max(0.0, inter_ymax - inter_ymin)
+    inter_area = inter_w * inter_h
+
+    # 합집합 영역 계산
+    box1_area = (x1_max - x1_min) * (y1_max - y1_min)
+    box2_area = (x2_max - x2_min) * (y2_max - y2_min)
+    union_area = box1_area + box2_area - inter_area
+
+    if union_area == 0:
+        return 0.0
+
+    return inter_area / union_area
+
+
+def apply_nms_per_class(boxes_with_info, iou_threshold=0.5):
+    """
+    Per-Class NMS 적용
+    같은 클래스 내에서만 중복 박스 제거
+
+    Args:
+        boxes_with_info: list of dict with keys ['box', 'score', 'class_id']
+        iou_threshold: IoU 임계값
+
+    Returns:
+        list: NMS 적용 후 남은 박스들
+    """
+    if len(boxes_with_info) == 0:
+        return []
+
+    # 클래스별로 박스 그룹화
+    boxes_by_class = {}
+    for item in boxes_with_info:
+        class_id = item['class_id']
+        if class_id not in boxes_by_class:
+            boxes_by_class[class_id] = []
+        boxes_by_class[class_id].append(item)
+
+    # 각 클래스별로 NMS 적용
+    final_boxes = []
+    for class_id, boxes in boxes_by_class.items():
+        # score 기준 내림차순 정렬
+        boxes_sorted = sorted(boxes, key=lambda x: x['score'], reverse=True)
+
+        keep = []
+        while len(boxes_sorted) > 0:
+            # 가장 높은 score의 박스 선택
+            best = boxes_sorted.pop(0)
+            keep.append(best)
+
+            # 나머지 박스들과 IoU 비교
+            remaining = []
+            for box in boxes_sorted:
+                iou = compute_iou(best['box'], box['box'])
+                if iou < iou_threshold:
+                    # IoU가 임계값보다 낮으면 유지 (다른 객체)
+                    remaining.append(box)
+                # else: IoU가 높으면 제거 (중복 검출)
+
+            boxes_sorted = remaining
+
+        final_boxes.extend(keep)
+
+    return final_boxes
+
+
+def save_yolo_annotation(image_path, results_by_prompt, class_mapping, output_dir, img_width, img_height,
+                         enable_nms=False, nms_iou_threshold=0.5):
+    """
+    YOLO 형식 어노테이션 저장 (NMS 옵션 지원)
+
+    Args:
+        image_path: 이미지 경로
+        results_by_prompt: 프롬프트별 검출 결과
+        class_mapping: 클래스 매핑 dict
+        output_dir: 출력 디렉토리
+        img_width, img_height: 이미지 크기
+        enable_nms: NMS 활성화 여부 (default: False)
+        nms_iou_threshold: NMS IoU 임계값 (default: 0.5)
+
+    Returns:
+        int: 저장된 객체 수
+    """
     image_name = Path(image_path).stem
     txt_path = os.path.join(output_dir, f"{image_name}.txt")
-    
-    lines = []
-    total_objects = 0
-    
+
+    # 1단계: 모든 박스 수집
+    all_boxes = []
+
     for prompt_name, result in results_by_prompt.items():
         if result is None or len(result['boxes']) == 0:
             continue
-        
+
         class_id = class_mapping.get(prompt_name, -1)
         if class_id < 0:
             continue
-        
+
         boxes = result['boxes']
         scores = result['scores']
-        
-        for idx, (box, score) in enumerate(zip(boxes, scores)):
-            x_center, y_center, width, height = bbox_to_yolo_format(
-                box, img_width, img_height
-            )
-            
-            line = f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
-            lines.append(line)
-            total_objects += 1
-    
+
+        for box, score in zip(boxes, scores):
+            all_boxes.append({
+                'box': box,
+                'score': score,
+                'class_id': class_id,
+                'prompt': prompt_name  # 디버깅용
+            })
+
+    # 2단계: NMS 적용 (옵션)
+    if enable_nms and len(all_boxes) > 0:
+        final_boxes = apply_nms_per_class(all_boxes, nms_iou_threshold)
+    else:
+        final_boxes = all_boxes
+
+    # 3단계: YOLO 형식으로 저장
+    lines = []
+    for item in final_boxes:
+        x_center, y_center, width, height = bbox_to_yolo_format(
+            item['box'], img_width, img_height
+        )
+
+        line = f"{item['class_id']} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
+        lines.append(line)
+
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.writelines(lines)
-    
-    return total_objects
+
+    return len(final_boxes)
 
 
 def imread_unicode(image_path):
@@ -788,11 +903,11 @@ def extract_frames_from_videos(video_source, jpeg_output_dir, fps_extraction=1, 
 
 
 def process_single_image_batch(
-    image_path, model, transform, postprocessor, prompts, 
+    image_path, model, transform, postprocessor, prompts,
     class_mapping, output_dir, device='cuda',
-    show_realtime=False, save_visualizations=False, 
+    show_realtime=False, save_visualizations=False,
     visualization_dir=None, window_name="SAM3 Detection",
-    prompt_chunk_size=4
+    prompt_chunk_size=4, enable_nms=False, nms_iou_threshold=0.5
 ):
     """단일 이미지 배치 처리"""
     try:
@@ -907,8 +1022,9 @@ def process_single_image_batch(
         
         save_start = time.time()
         num_objects = save_yolo_annotation(
-            image_path, results_by_prompt, class_mapping, 
-            output_dir, img_width, img_height
+            image_path, results_by_prompt, class_mapping,
+            output_dir, img_width, img_height,
+            enable_nms=enable_nms, nms_iou_threshold=nms_iou_threshold
         )
         save_time = time.time() - save_start
         
@@ -966,7 +1082,9 @@ def create_yolo_dataset(
     verbose=True,
     show_realtime=False,
     save_visualizations=False,
-    visualization_dir=None
+    visualization_dir=None,
+    enable_nms=False,
+    nms_iou_threshold=0.5
 ):
     """YOLO 형식 데이터셋 생성"""
     print("\n")
@@ -993,6 +1111,9 @@ def create_yolo_dataset(
     print(f"청크 수: {(len(prompts) + prompt_chunk_size - 1) // prompt_chunk_size}개")
     print(f"검출 임계값: {detection_threshold}")
     print(f"디바이스: {device}")
+    print(f"NMS 활성화: {enable_nms}")
+    if enable_nms:
+        print(f"NMS IoU 임계값: {nms_iou_threshold}")
     print(f"실시간 표시: {show_realtime}")
     print(f"시각화 저장: {save_visualizations}")
     if save_visualizations and visualization_dir:
@@ -1074,7 +1195,9 @@ def create_yolo_dataset(
             save_visualizations=save_visualizations,
             visualization_dir=visualization_dir,
             window_name=window_name,
-            prompt_chunk_size=prompt_chunk_size
+            prompt_chunk_size=prompt_chunk_size,
+            enable_nms=enable_nms,
+            nms_iou_threshold=nms_iou_threshold
         )
         
         if result['success']:
@@ -1222,6 +1345,12 @@ def main():
                         help='검출 임계값')
     parser.add_argument('--chunk_size', type=int, default=4,
                         help='프롬프트 청크 크기')
+
+    # NMS 설정
+    parser.add_argument('--enable_nms', action='store_true',
+                        help='Per-Class NMS 활성화 (중복 박스 제거)')
+    parser.add_argument('--nms_iou_threshold', type=float, default=0.5,
+                        help='NMS IoU 임계값 (0.0-1.0, default: 0.5)')
     
     # 표시 옵션
     parser.add_argument('--show', action='store_true',
@@ -1315,7 +1444,9 @@ def main():
             verbose=True,
             show_realtime=args.show,
             save_visualizations=args.save_viz,
-            visualization_dir=args.viz_dir if args.save_viz else None
+            visualization_dir=args.viz_dir if args.save_viz else None,
+            enable_nms=args.enable_nms,
+            nms_iou_threshold=args.nms_iou_threshold
         )
         
         print("\n" + "=" * 60)
