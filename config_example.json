@@ -1,0 +1,32 @@
+{
+  "model_dir": "./models",
+  "image_dir": "./data/images",
+  "label_dir": "./data/labels",
+  "viz_dir": "./data/results",
+
+  "classes": {
+    "person": 0,
+    "helmet": 1,
+    "car": 2
+  },
+
+  "detection_config": {
+    "use_presence": false,
+    "default_threshold": 0.3,
+    "class_thresholds": {
+      "person": 0.3,
+      "helmet": 0.15,
+      "car": 0.3
+    }
+  },
+
+  "inference": {
+    "chunk_size": 4,
+    "max_dets_per_img": 100
+  },
+
+  "output": {
+    "save_viz": false,
+    "show": false
+  }
+}
