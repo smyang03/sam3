@@ -731,60 +731,67 @@ def show_realtime_result(image_path, results_by_prompt, class_mapping, window_na
 
 
 def extract_frames_from_videos(video_source, jpeg_output_dir, fps_extraction=1, verbose=True):
-    """동영상에서 프레임 추출"""
+    """동영상에서 프레임 추출
+
+    Args:
+        video_source: 동영상 파일/폴더 경로
+        jpeg_output_dir: JPEGImages 저장 경로
+        fps_extraction: N프레임마다 1번 추출 (1=매 프레임, 30=30프레임마다 1번, 0/-1=원본 전체)
+        verbose: 상세 출력 여부
+    """
     import cv2
-    
+
     print("\n" + "=" * 60)
     print("동영상 프레임 추출 시작")
     print("=" * 60)
-    
+
     video_paths = parse_video_source(video_source)
-    
+
     os.makedirs(jpeg_output_dir, exist_ok=True)
     print(f"📁 JPEGImages 저장 경로: {jpeg_output_dir}\n")
-    
+
     total_extracted = 0
     global_frame_index = 1
-    
+
     try:
         from tqdm import tqdm
         use_tqdm = True
     except ImportError:
         use_tqdm = False
-    
+
     for video_idx, video_path in enumerate(video_paths):
         video_name = Path(video_path).stem
-        
+
         if verbose:
             print(f"\n[{video_idx+1}/{len(video_paths)}] {video_name}")
-        
+
         cap = cv2.VideoCapture(video_path)
-        
+
         if not cap.isOpened():
             print(f"  ✗ 동영상을 열 수 없습니다: {video_path}")
             continue
-        
+
         original_fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = total_frames / original_fps if original_fps > 0 else 0
-        
+
         if verbose:
             print(f"  원본 FPS: {original_fps:.2f}")
             print(f"  총 프레임: {total_frames}")
             print(f"  길이: {duration:.2f}초")
-        
+
         if fps_extraction <= 0:
+            # 0 또는 음수면 원본 전체 추출
             frame_interval = 1
-            extract_fps = original_fps
             if verbose:
-                print(f"  추출 모드: 원본 FPS 전체 ({original_fps:.2f}fps)")
+                print(f"  추출 모드: 원본 전체 (매 1프레임)")
         else:
-            frame_interval = int(original_fps / fps_extraction)
-            if frame_interval < 1:
-                frame_interval = 1
-            extract_fps = fps_extraction
+            # fps_extraction = N프레임마다 1번 추출
+            frame_interval = fps_extraction
             if verbose:
-                print(f"  추출 모드: {fps_extraction}fps (매 {frame_interval}프레임)")
+                print(f"  추출 모드: 매 {frame_interval}프레임마다 1번")
+                actual_fps = original_fps / frame_interval if frame_interval > 0 else original_fps
+                print(f"  실제 추출 FPS: {actual_fps:.2f}fps")
         
         estimated_frames = total_frames // frame_interval
         if verbose:
@@ -1259,7 +1266,7 @@ def main():
     parser.add_argument('--video_source', type=str, default=None,
                         help='동영상 파일/폴더 경로')
     parser.add_argument('--fps', type=int, default=1,
-                        help='추출 FPS (0/-1=원본 전체)')
+                        help='N프레임마다 1번 추출 (1=매프레임, 30=30프레임마다 1번, 0/-1=원본 전체)')
     
     # 이미지 소스
     parser.add_argument('--image_dir', type=str, default=None,
