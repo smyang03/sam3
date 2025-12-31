@@ -1275,10 +1275,10 @@ def main():
                         help='JPEGImages 경로 (동영상 추출용)')
     
     # 출력 경로
-    parser.add_argument('--label_dir', type=str, default='./data/labels',
-                        help='라벨 출력 경로')
-    parser.add_argument('--viz_dir', type=str, default='./data/results',
-                        help='시각화 출력 경로')
+    parser.add_argument('--label_dir', type=str, default=None,
+                        help='라벨 출력 경로 (기본값: ./data/labels)')
+    parser.add_argument('--viz_dir', type=str, default=None,
+                        help='시각화 출력 경로 (기본값: ./data/results)')
     
     # 클래스 설정
     parser.add_argument('--classes', type=str, default=None,
@@ -1359,7 +1359,13 @@ def main():
         }
         print("⚠ 클래스 매핑이 없습니다. 기본값 사용:")
         print(f"   {args.classes}")
-    
+
+    if args.label_dir is None:
+        args.label_dir = './data/labels'
+
+    if args.viz_dir is None:
+        args.viz_dir = './data/results'
+
     print("\n")
     print("╔" + "=" * 58 + "╗")
     print("║" + " " * 5 + "SAM3 YOLO Dataset Creator (Offline Server)" + " " * 5 + "║")
