@@ -1303,12 +1303,26 @@ def main():
         # video_config 추출 및 적용
         video_config = config.get('video_config', None)
         if video_config:
+            print("📹 video_config 발견:")
+            print(f"  {video_config}")
+            print("📹 video_config 적용 중...")
+
             if args.video_source is None:
                 args.video_source = video_config.get('video_source', None)
+                if args.video_source:
+                    print(f"  ✓ video_source: {args.video_source}")
+
             if args.fps == 1:  # 기본값이면
-                args.fps = video_config.get('fps', 1)
+                config_fps = video_config.get('fps', None)
+                if config_fps is not None:
+                    args.fps = config_fps
+                    print(f"  ✓ fps: {args.fps}")
+
             if args.jpeg_dir == './data/JPEGImages':  # 기본값이면
-                args.jpeg_dir = video_config.get('jpeg_dir', './data/JPEGImages')
+                config_jpeg_dir = video_config.get('jpeg_dir', None)
+                if config_jpeg_dir:
+                    args.jpeg_dir = config_jpeg_dir
+                    print(f"  ✓ jpeg_dir: {args.jpeg_dir}")
 
         # Config 값으로 덮어쓰기 (커맨드라인 인자가 없는 경우만)
         for key, value in config.items():
@@ -1354,7 +1368,11 @@ def main():
             print("\n" + "🎬 " * 20)
             print("1단계: 동영상 프레임 추출")
             print("🎬 " * 20 + "\n")
-            
+            print(f"📊 프레임 추출 설정:")
+            print(f"  - 동영상 소스: {args.video_source}")
+            print(f"  - 출력 경로: {args.jpeg_dir}")
+            print(f"  - FPS: {args.fps}\n")
+
             extract_frames_from_videos(
                 video_source=args.video_source,
                 jpeg_output_dir=args.jpeg_dir,
