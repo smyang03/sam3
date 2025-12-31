@@ -66,6 +66,10 @@ from sam3.train.transforms.basic_for_api import (
     ComposeAPI, RandomResizeAPI, ToTensorAPI, NormalizeAPI
 )
 from sam3.eval.postprocessors import PostProcessImage
+from sam3.eval.postprocessors_classwise import (
+    PostProcessImageWithClassThresholds,
+    create_postprocessor_from_config
+)
 
 # Global counter for query IDs
 GLOBAL_COUNTER = 1
@@ -320,28 +324,74 @@ def create_transforms():
     )
 
 
-def create_postprocessor(detection_threshold=0.3, device='cuda'):
-    """후처리 PostProcessor 생성"""
-    if device == 'cpu':
-        return PostProcessImage(
-            max_dets_per_img=-1,
+def create_postprocessor(detection_config=None, class_mapping=None, device='cuda'):
+    """
+    후처리 PostProcessor 생성
+
+    Args:
+        detection_config: detection 설정 딕셔너리
+            {
+                "use_presence": false,
+                "default_threshold": 0.3,
+                "class_thresholds": {"helmet": 0.15, ...},
+                "max_dets_per_img": 100
+            }
+        class_mapping: 클래스 이름 → ID 매핑
+        device: 'cuda' or 'cpu'
+    """
+    # 기본값 설정
+    if detection_config is None:
+        detection_config = {
+            "use_presence": True,
+            "default_threshold": 0.3,
+            "max_dets_per_img": 100
+        }
+
+    use_presence = detection_config.get('use_presence', True)
+    default_threshold = detection_config.get('default_threshold', 0.3)
+    class_thresholds = detection_config.get('class_thresholds', {})
+    max_dets = detection_config.get('max_dets_per_img', 100)
+
+    # CPU/GPU 설정
+    to_cpu = (device == 'cpu')
+    use_gpu_interpolate = (device != 'cpu')
+
+    # 클래스별 threshold가 있으면 ClassWise 버전 사용
+    if class_thresholds and class_mapping:
+        print(f"📊 클래스별 threshold 사용:")
+        print(f"   use_presence: {use_presence}")
+        print(f"   default_threshold: {default_threshold}")
+        for class_name, threshold in class_thresholds.items():
+            print(f"   {class_name}: {threshold}")
+
+        return PostProcessImageWithClassThresholds(
+            max_dets_per_img=max_dets,
+            class_thresholds=class_thresholds,
+            class_to_id=class_mapping,
+            use_presence=use_presence,
+            detection_threshold=default_threshold,
             iou_type="segm",
             use_original_sizes_box=True,
             use_original_sizes_mask=True,
             convert_mask_to_rle=False,
-            detection_threshold=detection_threshold,
-            to_cpu=True,
-            always_interpolate_masks_on_gpu=False
+            to_cpu=to_cpu,
+            always_interpolate_masks_on_gpu=use_gpu_interpolate
         )
     else:
+        print(f"📊 단일 threshold 사용:")
+        print(f"   use_presence: {use_presence}")
+        print(f"   threshold: {default_threshold}")
+
         return PostProcessImage(
-            max_dets_per_img=-1,
+            max_dets_per_img=max_dets,
+            use_presence=use_presence,
+            detection_threshold=default_threshold,
             iou_type="segm",
             use_original_sizes_box=True,
             use_original_sizes_mask=True,
             convert_mask_to_rle=False,
-            detection_threshold=detection_threshold,
-            to_cpu=False,
+            to_cpu=to_cpu,
+            always_interpolate_masks_on_gpu=use_gpu_interpolate
         )
 
 
@@ -1021,7 +1071,17 @@ def create_yolo_dataset(
         print("✓ Transform 생성 완료")
     
     if postprocessor is None:
-        postprocessor = create_postprocessor(detection_threshold, device)
+        # detection_config 기본값 생성
+        default_detection_config = {
+            "use_presence": True,
+            "default_threshold": detection_threshold,
+            "max_dets_per_img": 100
+        }
+        postprocessor = create_postprocessor(
+            detection_config=default_detection_config,
+            class_mapping=class_mapping,
+            device=device
+        )
         print("✓ PostProcessor 생성 완료")
     
     print()
@@ -1232,12 +1292,18 @@ def main():
     args = parser.parse_args()
     
     # Config 파일 우선 로드
+    detection_config = None
     if args.config:
         print(f"📄 Config 파일 로드: {args.config}")
         config = load_config_from_json(args.config)
-        
+
+        # detection_config 추출
+        detection_config = config.get('detection_config', None)
+
         # Config 값으로 덮어쓰기 (커맨드라인 인자가 없는 경우만)
         for key, value in config.items():
+            if key == 'detection_config':
+                continue  # detection_config는 별도 처리
             if not hasattr(args, key) or getattr(args, key) is None:
                 setattr(args, key, value)
     
@@ -1297,7 +1363,20 @@ def main():
         
         # Transform & PostProcessor 생성
         transform = create_transforms()
-        postprocessor = create_postprocessor(args.threshold, device)
+
+        # detection_config가 없으면 기본값으로 생성
+        if detection_config is None:
+            detection_config = {
+                "use_presence": True,
+                "default_threshold": args.threshold,
+                "max_dets_per_img": 100
+            }
+
+        postprocessor = create_postprocessor(
+            detection_config=detection_config,
+            class_mapping=args.classes,
+            device=device
+        )
         
         # YOLO 데이터셋 생성
         create_yolo_dataset(
