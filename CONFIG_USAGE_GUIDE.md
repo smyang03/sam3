@@ -227,25 +227,28 @@ python sam3_offline.py --config config_video.json --gpu 0
 ```
 
 **처리 과정**:
-1. `./videos` 폴더의 모든 동영상에서 프레임 추출 (1 FPS)
+1. `./videos` 폴더의 모든 동영상에서 프레임 추출 (매 프레임마다 추출)
 2. 추출된 프레임을 `./data/frames`에 저장
 3. 각 프레임에 대해 라벨 생성 (helmet은 threshold 0.15)
 4. 라벨을 `./data/labels`에 저장
 
 ### FPS 설정
 
-| 값 | 의미 |
-|----|------|
-| `1` | 1초당 1프레임 추출 |
-| `5` | 1초당 5프레임 추출 |
-| `30` | 1초당 30프레임 추출 (원본이 30fps인 경우 전체) |
-| `0` 또는 `-1` | 모든 프레임 추출 |
+**중요**: fps는 "N프레임마다 1번 추출"을 의미합니다.
+
+| 값 | 의미 | 원본 30fps 기준 결과 |
+|----|------|---------------------|
+| `1` | 매 프레임 추출 | 30fps (전체) |
+| `5` | 5프레임마다 1번 | 6fps |
+| `30` | 30프레임마다 1번 | 1fps (1초당 1프레임) |
+| `60` | 60프레임마다 1번 | 0.5fps (2초당 1프레임) |
+| `0` 또는 `-1` | 모든 프레임 추출 | 30fps (전체) |
 
 **예시**:
 ```json
 {
   "video_config": {
-    "fps": 5  // 1초당 5프레임
+    "fps": 30  // 30프레임마다 1번 = 1초당 1프레임 (30fps 영상 기준)
   }
 }
 ```
@@ -256,7 +259,7 @@ python sam3_offline.py --config config_video.json --gpu 0
 {
   "video_config": {
     "video_source": "./videos/construction_site.mp4",
-    "fps": 2
+    "fps": 2  // 2프레임마다 1번 추출
   }
 }
 ```
@@ -267,7 +270,7 @@ python sam3_offline.py --config config_video.json --gpu 0
 {
   "video_config": {
     "video_source": "./videos",
-    "fps": 1
+    "fps": 1  // 매 프레임 추출 (전체)
   }
 }
 ```
