@@ -59,6 +59,27 @@ python sam3_offline.py --config config.json --gpu 0
 | `class_thresholds` | object | `{}` | 클래스별 threshold |
 | `max_dets_per_img` | int | `100` | 이미지당 최대 감지 개수 |
 
+### video_config (동영상 처리 설정)
+
+| 항목 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `video_source` | string | `null` | 동영상 파일/폴더 경로 |
+| `fps` | int | `1` | 프레임 추출 FPS (0/-1: 전체) |
+| `jpeg_dir` | string | `./data/JPEGImages` | 추출된 프레임 저장 경로 |
+
+### inference (추론 설정)
+
+| 항목 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `chunk_size` | int | `4` | 프롬프트 청크 크기 |
+
+### output (출력 설정)
+
+| 항목 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `save_viz` | boolean | `false` | 시각화 이미지 저장 여부 |
+| `show` | boolean | `false` | 실시간 결과 표시 여부 |
+
 ---
 
 ## 사용 예시
@@ -166,6 +187,92 @@ threshold (helmet): 0.15
 threshold (person): 0.3
 → 결과: [0.5] → 1개만 통과
 ```
+
+---
+
+## 동영상 처리
+
+### 동영상에서 프레임 추출 + 라벨 생성
+
+`config_video.json`:
+```json
+{
+  "video_config": {
+    "video_source": "./videos",
+    "fps": 1,
+    "jpeg_dir": "./data/frames"
+  },
+
+  "label_dir": "./data/labels",
+
+  "classes": {
+    "person": 0,
+    "helmet": 1,
+    "car": 2
+  },
+
+  "detection_config": {
+    "use_presence": false,
+    "default_threshold": 0.3,
+    "class_thresholds": {
+      "helmet": 0.15
+    }
+  }
+}
+```
+
+**실행**:
+```bash
+python sam3_offline.py --config config_video.json --gpu 0
+```
+
+**처리 과정**:
+1. `./videos` 폴더의 모든 동영상에서 프레임 추출 (1 FPS)
+2. 추출된 프레임을 `./data/frames`에 저장
+3. 각 프레임에 대해 라벨 생성 (helmet은 threshold 0.15)
+4. 라벨을 `./data/labels`에 저장
+
+### FPS 설정
+
+| 값 | 의미 |
+|----|------|
+| `1` | 1초당 1프레임 추출 |
+| `5` | 1초당 5프레임 추출 |
+| `30` | 1초당 30프레임 추출 (원본이 30fps인 경우 전체) |
+| `0` 또는 `-1` | 모든 프레임 추출 |
+
+**예시**:
+```json
+{
+  "video_config": {
+    "fps": 5  // 1초당 5프레임
+  }
+}
+```
+
+### 특정 동영상 파일 처리
+
+```json
+{
+  "video_config": {
+    "video_source": "./videos/construction_site.mp4",
+    "fps": 2
+  }
+}
+```
+
+### 동영상 폴더 일괄 처리
+
+```json
+{
+  "video_config": {
+    "video_source": "./videos",
+    "fps": 1
+  }
+}
+```
+
+→ `./videos` 폴더의 모든 `.mp4`, `.avi`, `.mov` 파일 처리
 
 ---
 

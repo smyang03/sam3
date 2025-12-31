@@ -1300,12 +1300,34 @@ def main():
         # detection_config 추출
         detection_config = config.get('detection_config', None)
 
+        # video_config 추출 및 적용
+        video_config = config.get('video_config', None)
+        if video_config:
+            if args.video_source is None:
+                args.video_source = video_config.get('video_source', None)
+            if args.fps == 1:  # 기본값이면
+                args.fps = video_config.get('fps', 1)
+            if args.jpeg_dir == './data/JPEGImages':  # 기본값이면
+                args.jpeg_dir = video_config.get('jpeg_dir', './data/JPEGImages')
+
         # Config 값으로 덮어쓰기 (커맨드라인 인자가 없는 경우만)
         for key, value in config.items():
-            if key == 'detection_config':
-                continue  # detection_config는 별도 처리
+            if key in ['detection_config', 'video_config', 'inference', 'output']:
+                continue  # 특수 config는 별도 처리
             if not hasattr(args, key) or getattr(args, key) is None:
                 setattr(args, key, value)
+
+        # inference config 적용
+        inference_config = config.get('inference', {})
+        if 'chunk_size' in inference_config and args.chunk_size == 4:  # 기본값이면
+            args.chunk_size = inference_config['chunk_size']
+
+        # output config 적용
+        output_config = config.get('output', {})
+        if 'save_viz' in output_config and not args.save_viz:  # 기본값이면
+            args.save_viz = output_config['save_viz']
+        if 'show' in output_config and not args.show:  # 기본값이면
+            args.show = output_config['show']
     
     # 기본 설정
     if args.classes is None:
