@@ -14,5 +14,11 @@
   "threshold": 0.3,
   "chunk_size": 4,
   "show": true,
-  "save_viz": true
+  "save_viz": true,
+
+  "nms": {
+    "enabled": true,
+    "mode": "global",
+    "iou_threshold": 0.5
+  }
 }

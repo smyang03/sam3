@@ -714,6 +714,8 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
         run_nms=False,
         nms_prob_thresh=None,
         nms_iou_thresh=None,
+        # NMS mode: "global" (across all classes) or "per_class" (independent per prompt)
+        nms_mode="per_class",
         **kwargs,
     ):
         """
@@ -738,6 +740,7 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
                     run_nms=run_nms,
                     nms_prob_thresh=nms_prob_thresh,
                     nms_iou_thresh=nms_iou_thresh,
+                    nms_mode=nms_mode,
                 )
 
         # read out the current frame's results from `multigpu_buffer`
@@ -785,6 +788,7 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
                     run_nms=run_nms,
                     nms_prob_thresh=nms_prob_thresh,
                     nms_iou_thresh=nms_iou_thresh,
+                    nms_mode=nms_mode,
                 )
 
         return out, backbone_out
@@ -801,6 +805,7 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
         run_nms=False,
         nms_prob_thresh=None,
         nms_iou_thresh=None,
+        nms_mode="per_class",
     ):
         """Compute detection outputs on a chunk of frames and store their results in multigpu_buffer."""
         # each GPU computes detections on one frame in the chunk (in a round-robin manner)
@@ -819,16 +824,31 @@ class Sam3ImageOnVideoMultiGPU(Sam3Image):
                 assert nms_prob_thresh is not None and nms_iou_thresh is not None
                 pred_probs = out_local["pred_logits"].squeeze(-1).sigmoid()
                 pred_masks = out_local["pred_masks"]
-                # loop over text prompts (not an overhead for demo where there's only 1 prompt)
-                for prompt_idx in range(pred_probs.size(0)):
+                num_prompts = pred_probs.size(0)
+
+                if nms_mode == "global" and num_prompts > 1:
+                    # Global NMS: flatten all prompts, apply NMS across all classes
+                    all_probs = pred_probs.reshape(-1)
+                    all_masks = pred_masks.reshape(-1, *pred_masks.shape[2:])
                     keep = nms_masks(
-                        pred_probs=pred_probs[prompt_idx],
-                        pred_masks=pred_masks[prompt_idx],
+                        pred_probs=all_probs,
+                        pred_masks=all_masks,
                         prob_threshold=nms_prob_thresh,
                         iou_threshold=nms_iou_thresh,
                     )
-                    # set a very low threshold for those detections removed by NMS
-                    out_local["pred_logits"][prompt_idx, :, 0] -= 1e4 * (~keep).float()
+                    keep = keep.reshape(num_prompts, -1)
+                    out_local["pred_logits"][:, :, 0] -= 1e4 * (~keep).float()
+                else:
+                    # Per-class NMS: loop over text prompts independently
+                    for prompt_idx in range(num_prompts):
+                        keep = nms_masks(
+                            pred_probs=pred_probs[prompt_idx],
+                            pred_masks=pred_masks[prompt_idx],
+                            prob_threshold=nms_prob_thresh,
+                            iou_threshold=nms_iou_thresh,
+                        )
+                        # set a very low threshold for those detections removed by NMS
+                        out_local["pred_logits"][prompt_idx, :, 0] -= 1e4 * (~keep).float()
 
         if self.gather_backbone_out:
             # gather the SAM 2 backbone features across GPUs
