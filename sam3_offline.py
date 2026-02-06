@@ -1430,7 +1430,7 @@ def main():
     # 동영상 프레임 추출
     parser.add_argument('--video_source', type=str, default=None,
                         help='동영상 파일/폴더 경로')
-    parser.add_argument('--fps', type=int, default=1,
+    parser.add_argument('--fps', type=int, default=None,
                         help='N프레임마다 1번 추출 (1=매프레임, 30=30프레임마다 1번, 0/-1=원본 전체)')
     
     # 이미지 소스
@@ -1450,9 +1450,9 @@ def main():
                         help='클래스 매핑 (예: "person:0,car:1,dog:2")')
     
     # 추론 설정
-    parser.add_argument('--threshold', type=float, default=0.3,
+    parser.add_argument('--threshold', type=float, default=None,
                         help='검출 임계값')
-    parser.add_argument('--chunk_size', type=int, default=4,
+    parser.add_argument('--chunk_size', type=int, default=None,
                         help='프롬프트 청크 크기')
 
     # NMS 설정
@@ -1492,7 +1492,7 @@ def main():
                 if args.video_source:
                     print(f"  ✓ video_source: {args.video_source}")
 
-            if args.fps == 1:  # 기본값이면
+            if args.fps is None:
                 config_fps = video_config.get('fps', None)
                 if config_fps is not None:
                     args.fps = config_fps
@@ -1516,7 +1516,7 @@ def main():
 
         # inference config 적용
         inference_config = config.get('inference', {})
-        if 'chunk_size' in inference_config and args.chunk_size == 4:  # 기본값이면
+        if 'chunk_size' in inference_config and args.chunk_size is None:
             args.chunk_size = inference_config['chunk_size']
 
         # output config 적용
@@ -1541,6 +1541,14 @@ def main():
             nms_config = {'enabled': True, 'mode': 'global', 'iou_threshold': args.nms_iou}
         else:
             nms_config['iou_threshold'] = args.nms_iou
+
+    # 숫자 인자 기본값 적용 (config에서도 설정되지 않은 경우)
+    if args.fps is None:
+        args.fps = 1
+    if args.threshold is None:
+        args.threshold = 0.3
+    if args.chunk_size is None:
+        args.chunk_size = 4
 
     # 기본 설정
     if args.classes is None:
