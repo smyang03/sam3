@@ -1422,7 +1422,7 @@ def main():
     # 기본 설정
     parser.add_argument('--gpu', type=int, default=None,
                         help='GPU 인덱스 (0, 1, 2, ...) - None이면 자동')
-    parser.add_argument('--model_dir', type=str, default='./models',
+    parser.add_argument('--model_dir', type=str, default=None,
                         help='모델 디렉토리 경로')
     parser.add_argument('--config', type=str, default=None,
                         help='JSON 설정 파일 경로')
@@ -1436,7 +1436,7 @@ def main():
     # 이미지 소스
     parser.add_argument('--image_dir', type=str, default=None,
                         help='이미지 폴더 경로')
-    parser.add_argument('--jpeg_dir', type=str, default='./data/JPEGImages',
+    parser.add_argument('--jpeg_dir', type=str, default=None,
                         help='JPEGImages 경로 (동영상 추출용)')
     
     # 출력 경로
@@ -1498,7 +1498,7 @@ def main():
                     args.fps = config_fps
                     print(f"  ✓ fps: {args.fps}")
 
-            if args.jpeg_dir == './data/JPEGImages':  # 기본값이면
+            if args.jpeg_dir is None:
                 config_jpeg_dir = video_config.get('jpeg_dir', None)
                 if config_jpeg_dir:
                     args.jpeg_dir = config_jpeg_dir
@@ -1508,10 +1508,19 @@ def main():
         nms_config = config.get('nms', None)
 
         # Config 값으로 덮어쓰기 (커맨드라인 인자가 없는 경우만)
+        # store_true 인자는 기본값이 False이므로 별도 처리
+        _store_true_args = {'show', 'save_viz'}
         for key, value in config.items():
-            if key in ['detection_config', 'video_config', 'inference', 'output', 'nms']:
-                continue  # 특수 config는 별도 처리
-            if not hasattr(args, key) or getattr(args, key) is None:
+            if key in ['detection_config', 'video_config', 'inference', 'output', 'nms',
+                        '_comment', '_description', '_performance_notes']:
+                continue  # 특수 config 및 메타 필드는 별도 처리
+            if not hasattr(args, key):
+                continue
+            current = getattr(args, key)
+            if current is None:
+                setattr(args, key, value)
+            elif key in _store_true_args and not current:
+                # store_true 인자: CLI에서 지정 안 했으면 (False) config 값 사용
                 setattr(args, key, value)
 
         # inference config 적용
@@ -1542,9 +1551,13 @@ def main():
         else:
             nms_config['iou_threshold'] = args.nms_iou
 
-    # 숫자 인자 기본값 적용 (config에서도 설정되지 않은 경우)
+    # config에서도 설정되지 않은 인자에 기본값 적용
+    if args.model_dir is None:
+        args.model_dir = './models'
     if args.fps is None:
         args.fps = 1
+    if args.jpeg_dir is None:
+        args.jpeg_dir = './data/JPEGImages'
     if args.threshold is None:
         args.threshold = 0.3
     if args.chunk_size is None:
