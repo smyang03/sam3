@@ -42,6 +42,8 @@ class Sam3VideoBase(nn.Module):
         score_threshold_detection=0.5,
         # IoU threshold for detection NMS
         det_nms_thresh=0.0,
+        # NMS mode: "global" (across all classes) or "per_class" (independent per prompt)
+        nms_mode="per_class",
         # IoU threshold for det-to-track matching -- a detection is considered "matched" to a tracklet it
         # overlaps with a tracklet above this threshold -- it is often a loose threshold like 0.1
         assoc_iou_thresh=0.5,
@@ -84,6 +86,7 @@ class Sam3VideoBase(nn.Module):
         self.tracker = tracker
         self.score_threshold_detection = score_threshold_detection
         self.det_nms_thresh = det_nms_thresh
+        self.nms_mode = nms_mode
         self.assoc_iou_thresh = assoc_iou_thresh
         self.trk_assoc_iou_thresh = trk_assoc_iou_thresh
         self.new_det_thresh = new_det_thresh
@@ -358,6 +361,7 @@ class Sam3VideoBase(nn.Module):
             run_nms=self.det_nms_thresh > 0.0,
             nms_prob_thresh=self.score_threshold_detection,
             nms_iou_thresh=self.det_nms_thresh,
+            nms_mode=self.nms_mode,
             # pass max_frame_num_to_track to respect tracking limits
             max_frame_num_to_track=max_frame_num_to_track,
             propagate_in_video_start_frame_idx=start_frame_idx,

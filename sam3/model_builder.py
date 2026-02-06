@@ -656,6 +656,7 @@ def build_sam3_video_model(
     apply_temporal_disambiguation: bool = True,
     device="cuda" if torch.cuda.is_available() else "cpu",
     compile=False,
+    nms_mode: str = "per_class",
 ) -> Sam3VideoInferenceWithInstanceInteractivity:
     """
     Build SAM3 dense tracking model.
@@ -719,6 +720,7 @@ def build_sam3_video_model(
             score_threshold_detection=0.5,
             assoc_iou_thresh=0.1,
             det_nms_thresh=0.1,
+            nms_mode=nms_mode,
             new_det_thresh=0.7,
             hotstart_delay=15,
             hotstart_unmatch_thresh=8,
@@ -746,6 +748,7 @@ def build_sam3_video_model(
             score_threshold_detection=0.5,
             assoc_iou_thresh=0.1,
             det_nms_thresh=0.1,
+            nms_mode=nms_mode,
             new_det_thresh=0.7,
             hotstart_delay=0,
             hotstart_unmatch_thresh=0,

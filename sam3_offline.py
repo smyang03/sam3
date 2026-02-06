@@ -511,6 +511,157 @@ def parse_class_mapping(class_str):
     return mapping
 
 
+def compute_box_iou_matrix(boxes_a, boxes_b):
+    """두 박스 집합 간의 IoU 행렬 계산
+
+    Args:
+        boxes_a: (N, 4) numpy array [x1, y1, x2, y2]
+        boxes_b: (M, 4) numpy array [x1, y1, x2, y2]
+    Returns:
+        iou_matrix: (N, M) numpy array
+    """
+    x1_a, y1_a, x2_a, y2_a = boxes_a[:, 0], boxes_a[:, 1], boxes_a[:, 2], boxes_a[:, 3]
+    x1_b, y1_b, x2_b, y2_b = boxes_b[:, 0], boxes_b[:, 1], boxes_b[:, 2], boxes_b[:, 3]
+
+    area_a = (x2_a - x1_a) * (y2_a - y1_a)
+    area_b = (x2_b - x1_b) * (y2_b - y1_b)
+
+    inter_x1 = np.maximum(x1_a[:, None], x1_b[None, :])
+    inter_y1 = np.maximum(y1_a[:, None], y1_b[None, :])
+    inter_x2 = np.minimum(x2_a[:, None], x2_b[None, :])
+    inter_y2 = np.minimum(y2_a[:, None], y2_b[None, :])
+
+    inter_area = np.maximum(0, inter_x2 - inter_x1) * np.maximum(0, inter_y2 - inter_y1)
+    union_area = area_a[:, None] + area_b[None, :] - inter_area
+
+    iou = np.where(union_area > 0, inter_area / union_area, 0.0)
+    return iou
+
+
+def apply_nms_to_results(results_by_prompt, nms_config, class_mapping):
+    """결과에 NMS 적용 (global 또는 per_class 모드)
+
+    Args:
+        results_by_prompt: {prompt_name: {'boxes': np.array, 'scores': np.array}}
+        nms_config: {'enabled': bool, 'mode': 'global'|'per_class', 'iou_threshold': float}
+        class_mapping: {prompt_name: class_id}
+    Returns:
+        results_by_prompt: NMS가 적용된 결과
+    """
+    if not nms_config.get('enabled', False):
+        return results_by_prompt
+
+    iou_threshold = nms_config.get('iou_threshold', 0.5)
+    mode = nms_config.get('mode', 'global')
+
+    if mode == 'per_class':
+        # 클래스별 독립 NMS
+        for prompt_name in results_by_prompt:
+            result = results_by_prompt[prompt_name]
+            boxes = result['boxes']
+            scores = result['scores']
+
+            if len(boxes) == 0:
+                continue
+
+            if boxes.ndim != 2:
+                continue
+
+            keep = _nms_boxes(boxes, scores, iou_threshold)
+            results_by_prompt[prompt_name] = {
+                'boxes': boxes[keep],
+                'scores': scores[keep]
+            }
+
+    elif mode == 'global':
+        # 전체 클래스 글로벌 NMS - 모든 클래스를 합쳐서 NMS 적용
+        all_boxes = []
+        all_scores = []
+        all_labels = []
+        all_indices = []  # (prompt_name, original_index)
+
+        for prompt_name in results_by_prompt:
+            result = results_by_prompt[prompt_name]
+            boxes = result['boxes']
+            scores = result['scores']
+
+            if len(boxes) == 0:
+                continue
+
+            if boxes.ndim != 2:
+                continue
+
+            for i in range(len(boxes)):
+                all_boxes.append(boxes[i])
+                all_scores.append(scores[i])
+                all_labels.append(prompt_name)
+                all_indices.append((prompt_name, i))
+
+        if len(all_boxes) == 0:
+            return results_by_prompt
+
+        all_boxes = np.array(all_boxes)
+        all_scores = np.array(all_scores)
+
+        # 글로벌 NMS 적용 - 클래스 무관하게 스코어 순으로 억제
+        keep = _nms_boxes(all_boxes, all_scores, iou_threshold)
+
+        # 결과 재구성
+        new_results = {name: {'boxes': [], 'scores': []} for name in results_by_prompt}
+        for idx in keep:
+            prompt_name = all_labels[idx]
+            new_results[prompt_name]['boxes'].append(all_boxes[idx])
+            new_results[prompt_name]['scores'].append(all_scores[idx])
+
+        for prompt_name in new_results:
+            boxes = new_results[prompt_name]['boxes']
+            scores = new_results[prompt_name]['scores']
+            if len(boxes) > 0:
+                new_results[prompt_name]['boxes'] = np.array(boxes)
+                new_results[prompt_name]['scores'] = np.array(scores)
+            else:
+                new_results[prompt_name]['boxes'] = np.array([])
+                new_results[prompt_name]['scores'] = np.array([])
+
+        results_by_prompt = new_results
+
+    return results_by_prompt
+
+
+def _nms_boxes(boxes, scores, iou_threshold):
+    """단순 박스 NMS (greedy)
+
+    Args:
+        boxes: (N, 4) numpy array [x1, y1, x2, y2]
+        scores: (N,) numpy array
+        iou_threshold: float
+    Returns:
+        keep: list of indices to keep
+    """
+    if len(boxes) == 0:
+        return []
+
+    order = scores.argsort()[::-1]
+    keep = []
+
+    while len(order) > 0:
+        i = order[0]
+        keep.append(i)
+
+        if len(order) == 1:
+            break
+
+        remaining = order[1:]
+        ious = compute_box_iou_matrix(
+            boxes[i:i+1], boxes[remaining]
+        )[0]
+
+        mask = ious <= iou_threshold
+        order = remaining[mask]
+
+    return keep
+
+
 def bbox_to_yolo_format(box, img_width, img_height):
     """박스를 YOLO 형식으로 변환"""
     x1, y1, x2, y2 = box
@@ -845,11 +996,11 @@ def extract_frames_from_videos(video_source, jpeg_output_dir, fps_extraction=1, 
 
 
 def process_single_image_batch(
-    image_path, model, transform, postprocessor, prompts, 
+    image_path, model, transform, postprocessor, prompts,
     class_mapping, output_dir, device='cuda',
-    show_realtime=False, save_visualizations=False, 
+    show_realtime=False, save_visualizations=False,
     visualization_dir=None, window_name="SAM3 Detection",
-    prompt_chunk_size=4
+    prompt_chunk_size=4, nms_config=None
 ):
     """단일 이미지 배치 처리"""
     try:
@@ -961,7 +1112,13 @@ def process_single_image_batch(
             if device.startswith('cuda'):
                 del batch, output, processed_results
                 torch.cuda.empty_cache()
-        
+
+        # NMS 적용 (global 또는 per_class)
+        if nms_config and nms_config.get('enabled', False):
+            results_by_prompt = apply_nms_to_results(
+                results_by_prompt, nms_config, class_mapping
+            )
+
         save_start = time.time()
         num_objects = save_yolo_annotation(
             image_path, results_by_prompt, class_mapping, 
@@ -1023,7 +1180,8 @@ def create_yolo_dataset(
     verbose=True,
     show_realtime=False,
     save_visualizations=False,
-    visualization_dir=None
+    visualization_dir=None,
+    nms_config=None
 ):
     """YOLO 형식 데이터셋 생성"""
     print("\n")
@@ -1050,6 +1208,12 @@ def create_yolo_dataset(
     print(f"청크 수: {(len(prompts) + prompt_chunk_size - 1) // prompt_chunk_size}개")
     print(f"검출 임계값: {detection_threshold}")
     print(f"디바이스: {device}")
+    if nms_config and nms_config.get('enabled', False):
+        nms_mode = nms_config.get('mode', 'global')
+        nms_iou = nms_config.get('iou_threshold', 0.5)
+        print(f"NMS: {nms_mode} (IoU threshold: {nms_iou})")
+    else:
+        print(f"NMS: disabled")
     print(f"실시간 표시: {show_realtime}")
     print(f"시각화 저장: {save_visualizations}")
     if save_visualizations and visualization_dir:
@@ -1141,7 +1305,8 @@ def create_yolo_dataset(
             save_visualizations=save_visualizations,
             visualization_dir=visualization_dir,
             window_name=window_name,
-            prompt_chunk_size=prompt_chunk_size
+            prompt_chunk_size=prompt_chunk_size,
+            nms_config=nms_config
         )
         
         if result['success']:
@@ -1289,7 +1454,14 @@ def main():
                         help='검출 임계값')
     parser.add_argument('--chunk_size', type=int, default=4,
                         help='프롬프트 청크 크기')
-    
+
+    # NMS 설정
+    parser.add_argument('--nms_mode', type=str, default=None,
+                        choices=['global', 'per_class', 'none'],
+                        help='NMS 모드: global(전체 클래스), per_class(클래스별), none(비활성)')
+    parser.add_argument('--nms_iou', type=float, default=None,
+                        help='NMS IoU threshold')
+
     # 표시 옵션
     parser.add_argument('--show', action='store_true',
                         help='실시간 결과 표시')
@@ -1300,6 +1472,7 @@ def main():
     
     # Config 파일 우선 로드
     detection_config = None
+    nms_config = None
     if args.config:
         print(f"📄 Config 파일 로드: {args.config}")
         config = load_config_from_json(args.config)
@@ -1331,9 +1504,12 @@ def main():
                     args.jpeg_dir = config_jpeg_dir
                     print(f"  ✓ jpeg_dir: {args.jpeg_dir}")
 
+        # NMS config 추출
+        nms_config = config.get('nms', None)
+
         # Config 값으로 덮어쓰기 (커맨드라인 인자가 없는 경우만)
         for key, value in config.items():
-            if key in ['detection_config', 'video_config', 'inference', 'output']:
+            if key in ['detection_config', 'video_config', 'inference', 'output', 'nms']:
                 continue  # 특수 config는 별도 처리
             if not hasattr(args, key) or getattr(args, key) is None:
                 setattr(args, key, value)
@@ -1350,6 +1526,22 @@ def main():
         if 'show' in output_config and not args.show:  # 기본값이면
             args.show = output_config['show']
     
+    # 커맨드라인 NMS 인자로 오버라이드
+    if args.nms_mode is not None:
+        if args.nms_mode == 'none':
+            nms_config = {'enabled': False}
+        else:
+            if nms_config is None:
+                nms_config = {'enabled': True, 'mode': args.nms_mode, 'iou_threshold': 0.5}
+            else:
+                nms_config['enabled'] = True
+                nms_config['mode'] = args.nms_mode
+    if args.nms_iou is not None:
+        if nms_config is None:
+            nms_config = {'enabled': True, 'mode': 'global', 'iou_threshold': args.nms_iou}
+        else:
+            nms_config['iou_threshold'] = args.nms_iou
+
     # 기본 설정
     if args.classes is None:
         args.classes = {
@@ -1447,7 +1639,8 @@ def main():
             verbose=True,
             show_realtime=args.show,
             save_visualizations=args.save_viz,
-            visualization_dir=args.viz_dir if args.save_viz else None
+            visualization_dir=args.viz_dir if args.save_viz else None,
+            nms_config=nms_config
         )
         
         print("\n" + "=" * 60)

@@ -24,7 +24,13 @@
   "chunk_size": 8,
   "show": false,
   "save_viz": true,
-  
+
+  "nms": {
+    "enabled": true,
+    "mode": "global",
+    "iou_threshold": 0.5
+  },
+
   "_performance_notes": {
     "chunk_size": "RTX 4090/3090 24GB: 6-8개 권장",
     "expected_speed": "약 2-3초/이미지 (10개 프롬프트 기준)"
