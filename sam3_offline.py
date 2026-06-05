@@ -73,6 +73,7 @@ from sam3.eval.postprocessors_classwise import (
 
 # Global counter for query IDs
 GLOBAL_COUNTER = 1
+_SCORE_LOG_PRINTED = False
 
 
 def recursive_to_device(obj, device):
@@ -1166,6 +1167,22 @@ def process_single_image_batch(
             if device.startswith('cuda'):
                 del batch, output, processed_results
                 torch.cuda.empty_cache()
+
+        # 첫 이미지만 클래스별 스코어 분포 출력
+        global _SCORE_LOG_PRINTED
+        if not _SCORE_LOG_PRINTED:
+            _SCORE_LOG_PRINTED = True
+            print("\n[SCORE] ── NMS 전 스코어 분포 ──────────────────────")
+            for pname, res in results_by_prompt.items():
+                scores = res['scores']
+                if len(scores) == 0:
+                    print(f"[SCORE]  {pname}: 0개")
+                else:
+                    print(f"[SCORE]  {pname}: {len(scores)}개  "
+                          f"min={scores.min():.3f}  max={scores.max():.3f}  "
+                          f"avg={scores.mean():.3f}")
+                    print(f"[SCORE]    scores: {np.sort(scores)[::-1].round(3).tolist()}")
+            print("[SCORE] ────────────────────────────────────────────\n")
 
         # NMS 적용 (global 또는 per_class)
         if nms_config and nms_config.get('enabled', False):
