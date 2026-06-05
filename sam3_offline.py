@@ -540,11 +540,16 @@ def compute_box_iou_matrix(boxes_a, boxes_b):
 
 
 def apply_nms_to_results(results_by_prompt, nms_config, class_mapping):
-    """결과에 NMS 적용 (global 또는 per_class 모드)
+    """결과에 NMS 적용 (global / per_class / two_stage 모드)
 
     Args:
         results_by_prompt: {prompt_name: {'boxes': np.array, 'scores': np.array}}
-        nms_config: {'enabled': bool, 'mode': 'global'|'per_class', 'iou_threshold': float}
+        nms_config: {
+            'enabled': bool,
+            'mode': 'global'|'per_class'|'two_stage',
+            'iou_threshold': float,          # per_class 내부 중복 제거 threshold
+            'cross_class_iou_threshold': float  # two_stage 시 클래스 간 threshold (기본 0.7)
+        }
         class_mapping: {prompt_name: class_id}
     Returns:
         results_by_prompt: NMS가 적용된 결과
@@ -623,6 +628,55 @@ def apply_nms_to_results(results_by_prompt, nms_config, class_mapping):
             else:
                 new_results[prompt_name]['boxes'] = np.array([])
                 new_results[prompt_name]['scores'] = np.array([])
+
+        results_by_prompt = new_results
+
+    elif mode == 'two_stage':
+        # 1단계: 클래스별 독립 NMS (같은 클래스 중복 제거)
+        for prompt_name in results_by_prompt:
+            result = results_by_prompt[prompt_name]
+            boxes = result['boxes']
+            scores = result['scores']
+            if len(boxes) == 0 or boxes.ndim != 2:
+                continue
+            keep = _nms_boxes(boxes, scores, iou_threshold)
+            results_by_prompt[prompt_name] = {
+                'boxes': boxes[keep],
+                'scores': scores[keep]
+            }
+
+        # 2단계: 클래스 간 global NMS (같은 소에 두 클래스 동시 검출 제거)
+        # cross_class_iou_threshold는 높게 설정 → 거의 동일한 위치(같은 개체)만 억제
+        cross_iou = nms_config.get('cross_class_iou_threshold', 0.7)
+        all_boxes, all_scores, all_labels = [], [], []
+        for prompt_name in results_by_prompt:
+            boxes = results_by_prompt[prompt_name]['boxes']
+            scores = results_by_prompt[prompt_name]['scores']
+            if len(boxes) == 0 or boxes.ndim != 2:
+                continue
+            for box, score in zip(boxes, scores):
+                all_boxes.append(box)
+                all_scores.append(score)
+                all_labels.append(prompt_name)
+
+        if len(all_boxes) == 0:
+            return results_by_prompt
+
+        all_boxes = np.array(all_boxes)
+        all_scores = np.array(all_scores)
+        keep = _nms_boxes(all_boxes, all_scores, cross_iou)
+
+        new_results = {name: {'boxes': [], 'scores': []} for name in results_by_prompt}
+        for idx in keep:
+            prompt_name = all_labels[idx]
+            new_results[prompt_name]['boxes'].append(all_boxes[idx])
+            new_results[prompt_name]['scores'].append(all_scores[idx])
+
+        for prompt_name in new_results:
+            boxes = new_results[prompt_name]['boxes']
+            scores = new_results[prompt_name]['scores']
+            new_results[prompt_name]['boxes'] = np.array(boxes) if boxes else np.array([])
+            new_results[prompt_name]['scores'] = np.array(scores) if scores else np.array([])
 
         results_by_prompt = new_results
 
@@ -1231,7 +1285,11 @@ def create_yolo_dataset(
     if nms_config and nms_config.get('enabled', False):
         nms_mode = nms_config.get('mode', 'global')
         nms_iou = nms_config.get('iou_threshold', 0.5)
-        print(f"NMS: {nms_mode} (IoU threshold: {nms_iou})")
+        if nms_mode == 'two_stage':
+            cross_iou = nms_config.get('cross_class_iou_threshold', 0.7)
+            print(f"NMS: two_stage (per_class IoU: {nms_iou}, cross_class IoU: {cross_iou})")
+        else:
+            print(f"NMS: {nms_mode} (IoU threshold: {nms_iou})")
     else:
         print(f"NMS: disabled")
     print(f"실시간 표시: {show_realtime}")
