@@ -1,24 +1,36 @@
 {
-  "_comment": "SAM3 YOLO Dataset Creator - Configuration File",
-  "_description": "이미지 기반 라벨 생성 기본 설정",
-  
-  "model_dir": "D:/code/sam3/models",
-  "image_dir": "D:/code/sam3/testset/JPEGImages",
-  "label_dir": "D:/code/sam3/testset/labels",
-  "viz_dir": "D:/code/sam3/testset/result",
-  
+  "model_dir": "/workspace/datasets/sam3/models",
+  "image_dir": "/workspace/datasets/db2/101.etc/dongwon/data1/JPEGImages",
+  "label_dir": "/workspace/datasets/db2/101.etc/dongwon/data1/labels_sam3",
+  "viz_dir": "./data/results",
+
   "classes": {
-    "person": 0
+    "cow standing on four legs": 0,
+    "cow lying flat on ground": 1
   },
-  
-  "threshold": 0.3,
-  "chunk_size": 4,
-  "show": true,
-  "save_viz": true,
+
+  "detection_config": {
+    "use_presence": true,
+    "default_threshold": 0.35,
+    "class_thresholds": {
+      "cow standing on four legs": 0.05,
+      "cow lying flat on ground": 0.4
+    },
+    "max_dets_per_img": 100
+  },
 
   "nms": {
     "enabled": true,
-    "mode": "global",
+    "mode": "per_class",
     "iou_threshold": 0.5
+  },
+
+  "inference": {
+    "chunk_size": 2
+  },
+
+  "output": {
+    "save_viz": true,
+    "show": false
   }
 }
