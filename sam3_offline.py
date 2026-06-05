@@ -73,7 +73,7 @@ from sam3.eval.postprocessors_classwise import (
 
 # Global counter for query IDs
 GLOBAL_COUNTER = 1
-_DEBUG_PRINTED = False
+_SCORE_LOG_PRINTED = False
 
 
 def recursive_to_device(obj, device):
@@ -1117,25 +1117,6 @@ def process_single_image_batch(
             post_time = time.time() - post_start
             total_post_time += post_time
 
-            # DEBUG: 첫 청크만 출력 (전역 플래그)
-            global _DEBUG_PRINTED
-            if not _DEBUG_PRINTED and chunk_idx == 0:
-                _DEBUG_PRINTED = True
-                print(f"\n[DEBUG] chunk_prompts : {chunk_prompts}")
-                print(f"[DEBUG] prompt_ids    : {prompt_ids}")
-                print(f"[DEBUG] processed_results type : {type(processed_results)}")
-                if isinstance(processed_results, dict):
-                    print(f"[DEBUG] processed_results keys : {list(processed_results.keys())}")
-                    for k, v in processed_results.items():
-                        boxes = v['boxes']
-                        n = len(boxes) if hasattr(boxes, '__len__') else '?'
-                        print(f"[DEBUG]   key={k} -> boxes={n}개")
-                elif isinstance(processed_results, list):
-                    print(f"[DEBUG] processed_results len : {len(processed_results)}")
-                    for i, r in enumerate(processed_results):
-                        if isinstance(r, dict):
-                            print(f"[DEBUG]   [{i}] keys={list(r.keys())}")
-
             if not isinstance(processed_results, list):
                 if isinstance(processed_results, dict):
                     for prompt_name, prompt_id in zip(chunk_prompts, prompt_ids):
@@ -1186,6 +1167,22 @@ def process_single_image_batch(
             if device.startswith('cuda'):
                 del batch, output, processed_results
                 torch.cuda.empty_cache()
+
+        # 첫 이미지만 클래스별 스코어 분포 출력
+        global _SCORE_LOG_PRINTED
+        if not _SCORE_LOG_PRINTED:
+            _SCORE_LOG_PRINTED = True
+            print("\n[SCORE] ── NMS 전 스코어 분포 ──────────────────────")
+            for pname, res in results_by_prompt.items():
+                scores = res['scores']
+                if len(scores) == 0:
+                    print(f"[SCORE]  {pname}: 0개")
+                else:
+                    print(f"[SCORE]  {pname}: {len(scores)}개  "
+                          f"min={scores.min():.3f}  max={scores.max():.3f}  "
+                          f"avg={scores.mean():.3f}")
+                    print(f"[SCORE]    scores: {np.sort(scores)[::-1].round(3).tolist()}")
+            print("[SCORE] ────────────────────────────────────────────\n")
 
         # NMS 적용 (global 또는 per_class)
         if nms_config and nms_config.get('enabled', False):
