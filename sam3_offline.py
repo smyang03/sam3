@@ -73,6 +73,7 @@ from sam3.eval.postprocessors_classwise import (
 
 # Global counter for query IDs
 GLOBAL_COUNTER = 1
+_DEBUG_PRINTED = False
 
 
 def recursive_to_device(obj, device):
@@ -1061,7 +1062,26 @@ def process_single_image_batch(
             processed_results = postprocessor.process_results(output, batch.find_metadatas)
             post_time = time.time() - post_start
             total_post_time += post_time
-            
+
+            # DEBUG: 첫 청크만 출력 (전역 플래그)
+            global _DEBUG_PRINTED
+            if not _DEBUG_PRINTED and chunk_idx == 0:
+                _DEBUG_PRINTED = True
+                print(f"\n[DEBUG] chunk_prompts : {chunk_prompts}")
+                print(f"[DEBUG] prompt_ids    : {prompt_ids}")
+                print(f"[DEBUG] processed_results type : {type(processed_results)}")
+                if isinstance(processed_results, dict):
+                    print(f"[DEBUG] processed_results keys : {list(processed_results.keys())}")
+                    for k, v in processed_results.items():
+                        boxes = v['boxes']
+                        n = len(boxes) if hasattr(boxes, '__len__') else '?'
+                        print(f"[DEBUG]   key={k} -> boxes={n}개")
+                elif isinstance(processed_results, list):
+                    print(f"[DEBUG] processed_results len : {len(processed_results)}")
+                    for i, r in enumerate(processed_results):
+                        if isinstance(r, dict):
+                            print(f"[DEBUG]   [{i}] keys={list(r.keys())}")
+
             if not isinstance(processed_results, list):
                 if isinstance(processed_results, dict):
                     for prompt_name, prompt_id in zip(chunk_prompts, prompt_ids):
