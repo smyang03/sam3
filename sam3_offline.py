@@ -1638,6 +1638,10 @@ def main():
                 "max_dets_per_img": 100
             }
 
+        # detection_config의 threshold를 args.threshold와 동기화 (로그 일치)
+        if 'default_threshold' in detection_config:
+            args.threshold = detection_config['default_threshold']
+
         postprocessor = create_postprocessor(
             detection_config=detection_config,
             class_mapping=args.classes,
